@@ -1,0 +1,20 @@
+<style type="text/css">
+.main-container {
+  max-width: 1200px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+body{
+  font-family: Helvetica !important;
+  font-size: 10pt !important;
+}
+pre:not([class]) {
+    background-color: Aqua ;!DarkSeaGreen, LightCyan
+  }
+.table {
+	width: 40% !important;
+}
+.type-rmarkdown .blob-code-inner {
+  white-space: pre-wrap;
+}
+</style>

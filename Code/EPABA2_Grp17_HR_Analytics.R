@@ -1,0 +1,180 @@
+#EPABA Group 17 HR-Analytics
+#
+#Set the working Directory
+setwd("C:\\Data\\Learning\\DataScience\\IIMA\\Project\\EPABA2_Grp17_FinalProject_HR_Analytics")
+
+#load the common functions file. This file abstrats all the common functions. 
+# This file contains  algorithms functions of all the models. 
+source("Code\\CommonFunctionsVikas.R")
+
+#Load the data
+dataOriginal = read.csv("Data\\HR_Analytics.csv", stringsAsFactors = TRUE)
+
+#make of copy of original Data
+data<-dataOriginal
+
+#Understand data
+DataFamilarization(dataOriginal)
+
+# Compute the Attrition and its frequency
+dataAttritionFreq <- dataOriginal
+attrition <- as.factor(dataAttritionFreq$left) ; summary(attrition)
+AttritionRate <- sum(dataAttritionFreq$left / length(dataAttritionFreq$left)) * 100 
+print(paste("Attrition Rate = ",round(AttritionRate,2),"%"))
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+theme_set(theme_pubr())
+dataAttritionFreq$left <- ifelse(dataAttritionFreq$left == '1',"left","stay")
+df <- dataAttritionFreq %>%
+  group_by(left) %>%
+  summarise(counts = n())
+df
+ggplot(df, aes(x = left, y = counts)) +
+  geom_bar(fill = "#0073C2FF", stat = "identity") +
+  geom_text(aes(label = counts), vjust = -0.1) + 
+  theme_pubclean()
+
+
+#############[   Basic EDA    ]#################################################
+PercentLeft <- function(X,Y,colnames,color)
+{
+  library(ggplot2)
+  DataWithLeft<-as.data.frame(prop.table(table(X,Y, dnn=c("Var1","Left")), 1))
+  DataWithLeft <- subset(DataWithLeft, Left==1)
+  names(DataWithLeft) <- c("Var1","Left","PercentLeft")
+  DataWithLeft$PercentLeft <- round(DataWithLeft$PercentLeft * 100.00,2)
+  ggplot(DataWithLeft, aes(x=reorder(Var1, -PercentLeft),y=PercentLeft,fill=Left)) +
+    geom_bar(stat='identity', fill=color) +
+    geom_text(aes(label=PercentLeft), vjust=0) + 
+    ggtitle("---- Bar char for Left percenatages ----") + xlab(colnames) + 
+    ylab("% of Employees Left ----> ")
+}
+PercentLeft(data$salary,data$left, "<-------Salary--------->", "Red")
+PercentLeft(data$Department,data$left, "<-------Department--------->", "Blue")
+PercentLeft(data$Work_accident, data$left,
+            "Work Accident : 0=No Accident 1=Encountered accident", "Green")
+PercentLeft(data$promotion_last_5years,  data$left,
+            "Promotion : 0=Not Promoted 1=Promoted", "Orange")
+
+#Prepare Data of employess Left and Stayed  
+LeftData <- subset(data, left == 1)
+StayData <- subset(data, left == 0)
+
+ggplot() + geom_density(aes(x = satisfaction_level), colour = "red"  , data = LeftData) + 
+  geom_density(aes(x = satisfaction_level), colour = "blue" , data = StayData)
+
+ggplot() + geom_density(aes(x = last_evaluation), colour = "red"  , data = LeftData) + 
+  geom_density(aes(x = last_evaluation), colour = "blue" , data = StayData)
+
+ggplot() + geom_density(aes(x = number_project), colour = "red"  , data = LeftData) + 
+  geom_density(aes(x = number_project), colour = "blue" , data = StayData)
+
+ggplot() + geom_density(aes(x = average_montly_hours), colour = "red"  , data = LeftData) + 
+  geom_density(aes(x = average_montly_hours), colour = "blue" , data = StayData)
+
+ggplot() + geom_density(aes(x = time_spend_company), colour = "red"  , data = LeftData) + 
+  geom_density(aes(x = time_spend_company), colour = "blue" , data = StayData)
+
+ggplot() + geom_density(aes(x = salary), colour = "red"  , data = LeftData) + 
+  geom_density(aes(x = salary), colour = "blue" , data = StayData)
+
+
+################[    Predictive Modeling    ]#######################################################
+
+#convert salary into numeric low=1, medium=2, High=3
+data$salary <- ifelse(data$salary == 'low', 1,
+                      ifelse(data$salary == 'medium', 2, 
+                             ifelse(data$salary == 'high', 3, 0)))
+
+#Print correlation heat-map; 
+PrintCorrelationHeatmap(data[,-9]) #remove department as it is still category
+
+#Create one-hot-encoding for categorical data (Department)
+library(dummies)
+dataWithDummies <- dummy.data.frame(data, sep = ".")
+
+#Normalize the data by diving max(x)
+data_norm <- as.data.frame(lapply(dataWithDummies, normalize_DivideByMax))
+
+
+#Final Data
+dataFinal<- data_norm
+dataFinal$left <- factor(dataFinal$left) #required for random forest and Navie Bayes
+
+#Split data into Train and Test
+train<-TrainTestSplit(dataFinal, splitFactor = 0.7, train = TRUE)
+test<-TrainTestSplit(dataFinal, splitFactor = 0.7, train = FALSE)
+
+write.csv(train, file = "Data\\train.csv")
+write.csv(test, file = "Data\\test.csv")
+
+#Prepare Data for Models
+trainLabel<- "train$left"
+numericIndeDependentVariables <-paste("satisfaction_level+last_evaluation+number_project+average_montly_hours+time_spend_company+Work_accident+promotion_last_5years+salary")
+departments <-  paste("Department.accounting+Department.hr+Department.IT+Department.management+Department.marketing+Department.product_mng+Department.RandD+Department.sales+Department.support+Department.technical")
+inputVariables <- paste(numericIndeDependentVariables, "+", departments)
+
+###########[    Classification Models      ]###################################################
+CreateLogisticRegressionModel ( trainLabel, test$left, inputVariables, train, test    )
+##################################################
+#To get maximum benefit of decision Tree, we need original data and convert numeric left to 
+# "Still_Active" and "left". Also we wont use department for decision tree as from 
+# logistic regression, we came to know that department is not that important variable
+dataDecisionTree <- data[,-9]
+dataDecisionTree$left <- ifelse(dataDecisionTree$left == '0',"Still_Active",
+                                ifelse(dataDecisionTree$left == "1",'Left',"NA"))
+#Split data into Train and Test
+trainDecisionTree <- TrainTestSplit(dataDecisionTree, splitFactor = 0.7, train = TRUE)
+testDecisionTree <- TrainTestSplit(dataDecisionTree, splitFactor = 0.7, train = FALSE)
+
+CreateDecisionTreeModel ( "trainDecisionTree$left", 
+                          testDecisionTree$left, numericIndeDependentVariables, 
+                          trainDecisionTree, testDecisionTree)
+##################################################
+CreateRandomForestModel( trainLabel, test$left, inputVariables, train, test, 50)
+##################################################
+CreateKernalSvmModel ( trainLabel, test$left, inputVariables, train, test    )
+##################################################
+CreateNaiveBayesModel( trainLabel, test$left, inputVariables, train, test    )
+##################################################
+CreateDeepnetNNModel(train,test,targetColumnNumber=7,hiddenLayers=c(50, 30, 10),numepochs =700)
+##################################################
+CreateKerasNNModel(train,test,targetColumnNumber=7,batchSize=128,numepochs=25,validationSplit=0.2,
+                   lossFunction= "categorical_crossentropy",errorMetrics= "accuracy")
+##################################################
+CompareModelsAndPlotCombinedRocCurve()
+
+
+#########[    Principle Components Analysis    ]#########################################
+#for PCA, remove the department
+CreatePCA(data[,-9], numComponents=3)
+
+
+#######################[   Models for Satisfaction_level   ]#############################
+#make of copy of original Data
+data<-dataOriginal
+
+#convert salary into numeric low=1, medium=2, High=3
+data$salary <-ifelse(data$salary == 'low',1, ifelse(data$salary == 'medium', 2,
+                                                    ifelse(data$salary == 'high', 3, 0)))
+
+#eliminate left and department
+dataFinal <- data[,-c(7,9)]
+
+#Split data into Train and Test
+train<-TrainTestSplit(dataFinal, splitFactor = 0.7, train = TRUE)
+test<-TrainTestSplit(dataFinal, splitFactor = 0.7, train = FALSE)
+#Prepare Data for Models
+trainLabel  <- "train$satisfaction_level"
+test_Y      <- test$satisfaction_level
+inputVariables <-paste("last_evaluation+number_project+average_montly_hours+time_spend_company+Work_accident+promotion_last_5years+salary")
+#without polynomial Regression
+CreateStepwiseLinearRegressionModel(dataFinal,targetColumnNumber=1,isPoly=FALSE) 
+
+#With Polynomial regression
+CreateStepwiseLinearRegressionModel(dataFinal,targetColumnNumber=1,isPoly=TRUE)  
+
+#using XGBoost
+CreateXGBoostModel(train,test,test$satisfaction_level,number=10,classification=FALSE) 
+#===================================================================================================
